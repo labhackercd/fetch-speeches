@@ -8,6 +8,9 @@ name = "pypi"
 [packages]
 click = "*"
 requests = "*"
+pandas = "*"
+unidecode = "*"
+nltk = "*"
 
 [requires]
 python_version = "3.6"
