@@ -1,9 +1,11 @@
 from collections import Counter
 from functools import lru_cache
+from nltk.stem import RSLPStemmer
 import unidecode
 import pandas as pd
 import string
 import re
+import click
 
 STOPWORDS = [
     'de', 'a', 'o', 'que', 'e', 'do', 'da', 'em', 'um', 'para', 'com', 'nao',
@@ -64,6 +66,8 @@ STOPWORDS = [
 
 TOKENS = Counter()
 
+stemmer = RSLPStemmer()
+
 
 def clear_speech(text):
     text = re.sub(r'\([^)]*\)', '', text)
@@ -75,7 +79,7 @@ def clear_speech(text):
     text = re.sub(r'[Aa][Rr][Tt]\.', 'art', text)
     text = re.sub(r'[Ss][Rr][Ss]?\.', 'sr', text)
     text = re.sub(r'[Ss][Rr][Aa][Ss]?\.', 'sr', text)
-    text = re.sub(r'\d', '', text)
+    text = re.sub(r'\d', ' ', text)
     text = re.sub(r'[%s]' % re.escape(string.punctuation), ' ', text)
     text = unidecode.unidecode(text)
     text = text.lower().strip()
@@ -86,28 +90,64 @@ def clear_speech(text):
 
 
 @lru_cache()
+def stemmize(text):
+    return stemmer.stem(text)
+
+
+@lru_cache()
+def stemmize_tokens():
+    return set([stemmize(token) for token in TOKENS.keys()])
+
+
+@lru_cache()
 def tokenize_speech(text):
     tokens = text.split()
     return tokens
 
 
-def tokens_to_string(tokens):
-    return ','.join([token for token in tokens if token not in set(STOPWORDS)])
+def tokens_to_stem_string(tokens):
+    stopwords = set(STOPWORDS)
+    return ','.join(
+        [stemmize(token) for token in tokens if token not in stopwords]
+    )
 
 
 def update_stopwords(num_documents):
     for token, occurr in TOKENS.most_common():
-        if occurr >= num_documents * 0.99 or occurr <= num_documents * 0.01:
+        if occurr >= num_documents * 0.9 or occurr <= num_documents * 0.01:
             STOPWORDS.append(token)
 
 
-def load_speeches():
+def pre_process_speeches():
+    click.echo('Cleaning speeches...')
     speeches_df = pd.read_csv('speeches.csv')
+    speeches_df['original'] = speeches_df['speech']
     speeches_df['speech'] = speeches_df['speech'].apply(clear_speech)
     update_stopwords(speeches_df.shape[0])
-    speeches_df['tokens'] = speeches_df['speech'].apply(lambda x: tokens_to_string(tokenize_speech(x)))
-    import ipdb; ipdb.set_trace()
+    speeches_df['tokens'] = speeches_df['speech'].apply(
+        lambda x: tokens_to_stem_string(tokenize_speech(x))
+    )
+    return speeches_df
+
+
+def generate_stem_file():
+    click.echo('Generating stem.csv')
+    stems = [(idx + 1, token) for idx, token in enumerate(stemmize_tokens())]
+    stems_df = pd.DataFrame(data=stems, columns=['id', 'stem'])
+    stems_df.to_csv('stems.csv', index=False)
+
+
+def generate_speech_files(speeches):
+    click.echo('Generating metadatas.csv')
+    speeches[
+        ['id', 'author_name', 'author_party',
+         'author_region', 'date', 'updated_at', 'stage']
+    ].to_csv('metadatas.csv', index=False)
+    click.echo('Generating full-speeches.csv')
+    speeches[['id', 'original']].to_csv('full-speeches.csv', index=False)
 
 
 if __name__ == '__main__':
-    load_speeches()
+    speeches = pre_process_speeches()
+    generate_stem_file()
+    generate_speech_files(speeches)
