@@ -66,6 +66,8 @@ STOPWORDS = [
 
 TOKENS = Counter()
 
+STEMS = {}
+
 stemmer = RSLPStemmer()
 
 
@@ -80,7 +82,7 @@ def clear_speech(text):
     text = re.sub(r'[Ss][Rr][Ss]?\.', 'sr', text)
     text = re.sub(r'[Ss][Rr][Aa][Ss]?\.', 'sr', text)
     text = re.sub(r'\d', ' ', text)
-    text = re.sub(r'[%s]' % re.escape(string.punctuation), ' ', text)
+    text = re.sub(re.escape(string.punctuation), ' ', text)
     text = unidecode.unidecode(text)
     text = text.lower().strip()
 
@@ -96,12 +98,14 @@ def stemmize(text):
 
 @lru_cache()
 def stemmize_tokens():
-    return set([stemmize(token) for token in TOKENS.keys()])
+    return sorted(set([stemmize(token) for token in TOKENS.keys()]))
 
 
 @lru_cache()
 def tokenize_speech(text):
     tokens = text.split()
+    if '"' in tokens:
+        import ipdb; ipdb.set_trace()
     return tokens
 
 
@@ -113,6 +117,7 @@ def tokens_to_stem_string(tokens):
 
 
 def update_stopwords(num_documents):
+    click.echo('Updating stopwords using 90% - 1% technique')
     for token, occurr in TOKENS.most_common():
         if occurr >= num_documents * 0.9 or occurr <= num_documents * 0.01:
             STOPWORDS.append(token)
@@ -132,7 +137,10 @@ def pre_process_speeches():
 
 def generate_stem_file():
     click.echo('Generating stem.csv')
-    stems = [(idx + 1, token) for idx, token in enumerate(stemmize_tokens())]
+    stems = []
+    for idx, token in enumerate(stemmize_tokens()):
+        stems.append((idx + 1, token))
+        STEMS[token] = idx + 1
     stems_df = pd.DataFrame(data=stems, columns=['id', 'stem'])
     stems_df.to_csv('stems.csv', index=False)
 
@@ -147,7 +155,24 @@ def generate_speech_files(speeches):
     speeches[['id', 'original']].to_csv('full-speeches.csv', index=False)
 
 
+def generate_stems_matrix(speeches):
+    click.echo('Generating stemmed-speeches.csv')
+    dataframes = []
+    for idx, row in speeches.iterrows():
+        tokens = Counter()
+        for stem in row['tokens'].split(','):
+            tokens.update([STEMS[stem]])
+
+        dataframe = pd.DataFrame(data=sorted(tokens.items())).T
+        dataframe.insert(loc=0, value=row['id'], column='id')
+        dataframes.append(dataframe)
+
+    final_df = pd.concat(dataframes, sort=False)
+    final_df.to_csv('stemmed-speeches.csv', index=False)
+
+
 if __name__ == '__main__':
     speeches = pre_process_speeches()
     generate_stem_file()
     generate_speech_files(speeches)
+    generate_stems_matrix(speeches)
