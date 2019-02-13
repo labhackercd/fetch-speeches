@@ -82,9 +82,10 @@ def clear_speech(text):
     text = re.sub(r'[Ss][Rr][Ss]?\.', 'sr', text)
     text = re.sub(r'[Ss][Rr][Aa][Ss]?\.', 'sr', text)
     text = re.sub(r'\d', ' ', text)
-    text = re.sub(re.escape(string.punctuation), ' ', text)
+    text = re.sub(r'[%s]' % re.escape(string.punctuation), ' ', text)
     text = unidecode.unidecode(text)
     text = text.lower().strip()
+    text = re.sub('"', ' ', text)
 
     TOKENS.update(set(tokenize_speech(text)))
 
@@ -104,8 +105,6 @@ def stemmize_tokens():
 @lru_cache()
 def tokenize_speech(text):
     tokens = text.split()
-    if '"' in tokens:
-        import ipdb; ipdb.set_trace()
     return tokens
 
 
