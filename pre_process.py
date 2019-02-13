@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 from collections import Counter
 from functools import lru_cache
 from nltk.stem import RSLPStemmer
